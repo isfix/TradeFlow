@@ -1,0 +1,413 @@
+name: Continuous Integration
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: '3.11'
+  POETRY_VERSION: '1.6.1'
+
+jobs:
+  # =============================================================================
+  # CODE QUALITY AND SECURITY
+  # =============================================================================
+  
+  code-quality:
+    name: Code Quality & Security
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Full history for better analysis
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install black flake8 mypy bandit safety isort
+        pip install -r requirements.txt
+    
+    - name: Code formatting check (Black)
+      run: |
+        black --check --diff trading_platform/
+    
+    - name: Import sorting check (isort)
+      run: |
+        isort --check-only --diff trading_platform/
+    
+    - name: Linting (Flake8)
+      run: |
+        flake8 trading_platform/ --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 trading_platform/ --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+    
+    - name: Type checking (MyPy)
+      run: |
+        mypy trading_platform/ --ignore-missing-imports --no-strict-optional
+    
+    - name: Security scan (Bandit)
+      run: |
+        bandit -r trading_platform/ -f json -o bandit-report.json
+        bandit -r trading_platform/ -ll
+    
+    - name: Dependency vulnerability scan (Safety)
+      run: |
+        safety check --json --output safety-report.json
+        safety check
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  # =============================================================================
+  # UNIT TESTS
+  # =============================================================================
+  
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+    
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-${{ matrix.python-version }}-pip-${{ hashFiles('**/requirements.txt') }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov pytest-mock pytest-xdist
+        pip install -r requirements.txt
+    
+    - name: Run unit tests
+      run: |
+        pytest tests/ -v \
+          --cov=trading_platform \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=80 \
+          --junitxml=pytest-results.xml \
+          -n auto
+    
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          pytest-results.xml
+          htmlcov/
+          .coverage
+    
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  # =============================================================================
+  # INTEGRATION TESTS
+  # =============================================================================
+  
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: [code-quality, unit-tests]
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: trading_platform_test
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+      
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+      
+      mongodb:
+        image: mongo:7.0
+        env:
+          MONGO_INITDB_ROOT_USERNAME: test_user
+          MONGO_INITDB_ROOT_PASSWORD: test_password
+        ports:
+          - 27017:27017
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-asyncio pytest-cov pytest-mock
+        pip install -r requirements.txt
+    
+    - name: Wait for services
+      run: |
+        sleep 10
+        # Test database connections
+        python -c "
+        import psycopg2
+        import redis
+        import pymongo
+        
+        # Test PostgreSQL
+        conn = psycopg2.connect(
+            host='localhost',
+            port=5432,
+            database='trading_platform_test',
+            user='test_user',
+            password='test_password'
+        )
+        conn.close()
+        print('PostgreSQL connection successful')
+        
+        # Test Redis
+        r = redis.Redis(host='localhost', port=6379, decode_responses=True)
+        r.ping()
+        print('Redis connection successful')
+        
+        # Test MongoDB
+        client = pymongo.MongoClient('mongodb://test_user:test_password@localhost:27017/')
+        client.admin.command('ping')
+        print('MongoDB connection successful')
+        "
+    
+    - name: Run integration tests
+      env:
+        POSTGRES_HOST: localhost
+        POSTGRES_PORT: 5432
+        POSTGRES_DB: trading_platform_test
+        POSTGRES_USER: test_user
+        POSTGRES_PASSWORD: test_password
+        REDIS_HOST: localhost
+        REDIS_PORT: 6379
+        MONGODB_HOST: localhost
+        MONGODB_PORT: 27017
+        MONGODB_USER: test_user
+        MONGODB_PASSWORD: test_password
+        ENVIRONMENT: testing
+      run: |
+        pytest tests/integration/ -v \
+          --cov=trading_platform \
+          --cov-report=xml \
+          --junitxml=integration-results.xml
+    
+    - name: Upload integration test results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: integration-test-results
+        path: |
+          integration-results.xml
+          .coverage
+
+  # =============================================================================
+  # DOCKER BUILD AND SECURITY SCAN
+  # =============================================================================
+  
+  docker-build:
+    name: Docker Build & Security Scan
+    runs-on: ubuntu-latest
+    needs: [unit-tests]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Build base image
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        file: ./docker/Dockerfile
+        target: application
+        tags: trading-platform:latest
+        load: true
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+    
+    - name: Build microservice images
+      run: |
+        services=("market_data_service" "news_service" "feature_engineering_service" "sentiment_analysis_service" "signal_aggregation_service" "risk_management_service")
+        paths=("services/data_ingestion" "services/data_ingestion" "services/processing" "services/processing" "services/strategy" "services/execution")
+        
+        for i in "${!services[@]}"; do
+          service="${services[$i]}"
+          path="${paths[$i]}"
+          
+          docker build \
+            --build-arg SERVICE_NAME="$service" \
+            --build-arg SERVICE_PATH="$path" \
+            -f docker/Dockerfile.microservice \
+            -t "trading-platform-$service:latest" \
+            .
+        done
+    
+    - name: Run Trivy vulnerability scanner
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'trading-platform:latest'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+    
+    - name: Upload Trivy scan results
+      uses: github/codeql-action/upload-sarif@v2
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+    
+    - name: Test container startup
+      run: |
+        # Test that containers can start successfully
+        docker run --rm -d --name test-container trading-platform:latest
+        sleep 10
+        docker logs test-container
+        docker stop test-container
+
+  # =============================================================================
+  # PERFORMANCE TESTS
+  # =============================================================================
+  
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    needs: [integration-tests]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest pytest-benchmark locust
+        pip install -r requirements.txt
+    
+    - name: Run performance benchmarks
+      run: |
+        pytest tests/performance/ -v \
+          --benchmark-only \
+          --benchmark-json=benchmark-results.json
+    
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      with:
+        name: performance-results
+        path: benchmark-results.json
+
+  # =============================================================================
+  # DEPLOYMENT READINESS
+  # =============================================================================
+  
+  deployment-check:
+    name: Deployment Readiness
+    runs-on: ubuntu-latest
+    needs: [code-quality, unit-tests, integration-tests, docker-build]
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Check deployment configuration
+      run: |
+        # Verify all required configuration files exist
+        required_files=(
+          "docker/docker-compose.yml"
+          "docker/Dockerfile.microservice"
+          ".env.example"
+          "configs/database.yaml"
+          "configs/services.yaml"
+          "configs/kafka_topics.yaml"
+        )
+        
+        for file in "${required_files[@]}"; do
+          if [[ ! -f "$file" ]]; then
+            echo "Missing required file: $file"
+            exit 1
+          fi
+        done
+        
+        echo "All deployment files present"
+    
+    - name: Validate Docker Compose
+      run: |
+        docker-compose -f docker/docker-compose.yml config
+    
+    - name: Generate deployment summary
+      run: |
+        echo "## Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Code quality checks passed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Unit tests passed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Integration tests passed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Docker images built successfully" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Security scans completed" >> $GITHUB_STEP_SUMMARY
+        echo "- ✅ Deployment configuration validated" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Ready for deployment to staging environment**" >> $GITHUB_STEP_SUMMARY

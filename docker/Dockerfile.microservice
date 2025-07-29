@@ -1,0 +1,231 @@
+# Microservice-specific Dockerfile for Trading Platform
+# This Dockerfile builds individual microservices with their specific dependencies
+
+# Build arguments
+ARG SERVICE_NAME
+ARG SERVICE_PATH
+ARG PYTHON_VERSION=3.11
+
+# Stage 1: Base Python environment
+FROM python:${PYTHON_VERSION}-slim as base
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PYTHONPATH=/app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    libpq-dev \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create app user for security
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Set work directory
+WORKDIR /app
+
+# Stage 2: Dependencies installation
+FROM base as dependencies
+
+# Build arguments (re-declare for this stage)
+ARG SERVICE_NAME
+ARG SERVICE_PATH
+
+# Copy base requirements first
+COPY requirements.txt ./base_requirements.txt
+
+# Copy service-specific requirements
+COPY ${SERVICE_PATH}/requirements.txt ./service_requirements.txt
+
+# Install base dependencies
+RUN pip install --upgrade pip && \
+    pip install -r base_requirements.txt
+
+# Install service-specific dependencies
+RUN pip install -r service_requirements.txt
+
+# Stage 3: Application code
+FROM dependencies as application
+
+# Build arguments (re-declare for this stage)
+ARG SERVICE_NAME
+ARG SERVICE_PATH
+
+# Set service-specific environment variables
+ENV SERVICE_NAME=${SERVICE_NAME}
+ENV SERVICE_PATH=${SERVICE_PATH}
+
+# Copy the entire project (for imports to work correctly)
+COPY . .
+
+# Create necessary directories
+RUN mkdir -p logs && \
+    mkdir -p data && \
+    mkdir -p cache
+
+# Change ownership to app user
+RUN chown -R appuser:appuser /app
+
+# Switch to app user
+USER appuser
+
+# Create a startup script that determines which service to run
+RUN echo '#!/bin/bash\n\
+set -e\n\
+\n\
+# Determine which service to start based on SERVICE_NAME\n\
+case "$SERVICE_NAME" in\n\
+    "market_data_service")\n\
+        exec python -m trading_platform.services.data_ingestion.market_data_service\n\
+        ;;\n\
+    "news_service")\n\
+        exec python -m trading_platform.services.data_ingestion.news_service\n\
+        ;;\n\
+    "fundamental_service")\n\
+        exec python -m trading_platform.services.data_ingestion.fundamental_service\n\
+        ;;\n\
+    "feature_engineering_service")\n\
+        exec python -m trading_platform.services.processing.feature_engineering_service\n\
+        ;;\n\
+    "sentiment_analysis_service")\n\
+        exec python -m trading_platform.services.processing.sentiment_analysis_service\n\
+        ;;\n\
+    "signal_aggregation_service")\n\
+        exec python -m trading_platform.services.strategy.signal_aggregation_service\n\
+        ;;\n\
+    "risk_management_service")\n\
+        exec python -m trading_platform.services.execution.risk_management_service\n\
+        ;;\n\
+    *)\n\
+        echo "Unknown service: $SERVICE_NAME"\n\
+        exit 1\n\
+        ;;\n\
+esac' > /app/start_service.sh && \
+    chmod +x /app/start_service.sh
+
+# Health check script
+RUN echo '#!/bin/bash\n\
+# Simple health check that verifies the service is responsive\n\
+python -c "\n\
+import sys\n\
+import os\n\
+import time\n\
+import logging\n\
+\n\
+# Setup basic logging\n\
+logging.basicConfig(level=logging.INFO)\n\
+logger = logging.getLogger(\"healthcheck\")\n\
+\n\
+try:\n\
+    # Check if the service process is running\n\
+    service_name = os.environ.get(\"SERVICE_NAME\", \"unknown\")\n\
+    logger.info(f\"Health check for {service_name}\")\n\
+    \n\
+    # Basic checks\n\
+    # 1. Check if we can import the service module\n\
+    if service_name == \"market_data_service\":\n\
+        from trading_platform.services.data_ingestion.market_data_service import MarketDataService\n\
+    elif service_name == \"news_service\":\n\
+        from trading_platform.services.data_ingestion.news_service import NewsService\n\
+    elif service_name == \"feature_engineering_service\":\n\
+        from trading_platform.services.processing.feature_engineering_service import FeatureEngineeringService\n\
+    elif service_name == \"sentiment_analysis_service\":\n\
+        from trading_platform.services.processing.sentiment_analysis_service import SentimentAnalysisService\n\
+    elif service_name == \"signal_aggregation_service\":\n\
+        from trading_platform.services.strategy.signal_aggregation_service import SignalAggregationService\n\
+    elif service_name == \"risk_management_service\":\n\
+        from trading_platform.services.execution.risk_management_service import RiskManagementService\n\
+    \n\
+    logger.info(\"Health check passed\")\n\
+    sys.exit(0)\n\
+    \n\
+except Exception as e:\n\
+    logger.error(f\"Health check failed: {e}\")\n\
+    sys.exit(1)\n\
+"' > /app/healthcheck.sh && \
+    chmod +x /app/healthcheck.sh
+
+# Expose port (each service can use a different port)
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
+    CMD /app/healthcheck.sh
+
+# Default command
+CMD ["/app/start_service.sh"]
+
+# Stage 4: Development environment
+FROM application as development
+
+# Switch back to root for development tools
+USER root
+
+# Install development dependencies
+RUN pip install \
+    pytest \
+    pytest-asyncio \
+    pytest-cov \
+    pytest-mock \
+    black \
+    flake8 \
+    mypy \
+    ipython \
+    ipdb
+
+# Install debugging tools
+RUN pip install \
+    py-spy \
+    memory-profiler \
+    line-profiler
+
+# Switch back to app user
+USER appuser
+
+# Development command (with auto-reload)
+CMD ["python", "-u", "/app/start_service.sh"]
+
+# Stage 5: Testing environment
+FROM dependencies as testing
+
+# Copy application code
+COPY . .
+
+# Install test dependencies
+RUN pip install \
+    pytest \
+    pytest-asyncio \
+    pytest-cov \
+    pytest-mock \
+    pytest-xdist \
+    coverage
+
+# Change ownership to app user
+RUN chown -R appuser:appuser /app
+
+# Switch to app user
+USER appuser
+
+# Run tests by default
+CMD ["python", "-m", "pytest", "tests/", "-v", "--cov=trading_platform", "--cov-report=xml"]
+
+# Stage 6: Production environment
+FROM application as production
+
+# Remove development files and optimize
+RUN find . -name "*.pyc" -delete && \
+    find . -name "__pycache__" -type d -exec rm -rf {} + && \
+    rm -rf tests/ notebooks/ docs/ .git/
+
+# Production optimizations
+ENV PYTHONOPTIMIZE=1
+
+# Production command with proper signal handling
+CMD ["python", "-u", "/app/start_service.sh"]

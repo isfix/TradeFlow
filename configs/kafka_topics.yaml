@@ -1,0 +1,58 @@
+# Kafka Topics Configuration
+# Defines all event topic names used in the event bus
+# This prevents typos and acts as a manifest of all data streams
+
+# Data Ingestion Topics
+data_ingestion:
+  raw_market_data: "raw_market_data"
+  news_events: "news_events"
+  fundamental_events: "fundamental_events"
+
+# Processing Topics
+processing:
+  feature_events: "feature_events"
+  sentiment_events: "sentiment_events"
+  forecast_events: "forecast_events"
+
+# Strategy Topics
+strategy:
+  enriched_trade_signals: "enriched_trade_signals"
+  proposed_trade_orders: "proposed_trade_orders"
+
+# Execution Topics
+execution:
+  validated_trade_orders: "validated_trade_orders"
+  rejected_trade_orders: "rejected_trade_orders"
+  executed_trade_events: "executed_trade_events"
+
+# Analysis Topics
+analysis:
+  performance_events: "performance_events"
+  model_update_events: "model_update_events"
+
+# System Topics
+system:
+  health_checks: "health_checks"
+  error_events: "error_events"
+  audit_logs: "audit_logs"
+  dead_letter_queue: "dead_letter_queue"
+
+# Topic Configuration Settings
+topic_config:
+  default_partitions: 3
+  default_replication_factor: 1  # Increase for production
+  retention_ms: 604800000  # 7 days
+  cleanup_policy: "delete"
+  compression_type: "snappy"
+  
+# Consumer Group Settings
+consumer_groups:
+  feature_engineering: "feature_engineering_group"
+  sentiment_analysis: "sentiment_analysis_group"
+  quantitative_modeling: "quant_model_group"
+  signal_aggregation: "signal_aggregation_group"
+  portfolio_management: "portfolio_mgmt_group"
+  risk_management: "risk_mgmt_group"
+  order_execution: "order_execution_group"
+  feedback_analysis: "feedback_analysis_group"
+  monitoring: "monitoring_group"

@@ -1,0 +1,60 @@
+# Database Configuration
+# Connection details for all databases used in the trading platform
+# Keep sensitive credentials secure and use environment variables in production
+
+# Time-Series Database (InfluxDB/TimescaleDB)
+timeseries_db:
+  type: "influxdb"  # or "timescaledb"
+  host: "${TIMESERIES_DB_HOST:-localhost}"
+  port: "${TIMESERIES_DB_PORT:-8086}"
+  database: "${TIMESERIES_DB_NAME:-trading_timeseries}"
+  username: "${TIMESERIES_DB_USER:-admin}"
+  password: "${TIMESERIES_DB_PASSWORD:-password}"
+  org: "${INFLUXDB_ORG:-trading_org}"  # InfluxDB specific
+  token: "${INFLUXDB_TOKEN:-}"  # InfluxDB specific
+  ssl: false
+  timeout: 30
+
+# Document/Analytics Database (MongoDB)
+document_db:
+  type: "mongodb"
+  host: "${DOCUMENT_DB_HOST:-localhost}"
+  port: "${DOCUMENT_DB_PORT:-27017}"
+  database: "${DOCUMENT_DB_NAME:-trading_analytics}"
+  username: "${DOCUMENT_DB_USER:-admin}"
+  password: "${DOCUMENT_DB_PASSWORD:-password}"
+  auth_source: "${DOCUMENT_DB_AUTH_SOURCE:-admin}"
+  ssl: false
+  timeout: 30
+  max_pool_size: 100
+
+# Trade Ledger Database (PostgreSQL)
+trade_ledger_db:
+  type: "postgresql"
+  host: "${TRADE_LEDGER_DB_HOST:-localhost}"
+  port: "${TRADE_LEDGER_DB_PORT:-5432}"
+  database: "${TRADE_LEDGER_DB_NAME:-trading_ledger}"
+  username: "${TRADE_LEDGER_DB_USER:-postgres}"
+  password: "${TRADE_LEDGER_DB_PASSWORD:-password}"
+  ssl_mode: "${TRADE_LEDGER_DB_SSL_MODE:-prefer}"
+  pool_size: 20
+  max_overflow: 30
+  pool_timeout: 30
+
+# Cache Database (Redis)
+cache_db:
+  type: "redis"
+  host: "${CACHE_DB_HOST:-localhost}"
+  port: "${CACHE_DB_PORT:-6379}"
+  database: "${CACHE_DB_NUMBER:-0}"
+  password: "${CACHE_DB_PASSWORD:-}"
+  ssl: false
+  timeout: 10
+  max_connections: 50
+
+# Connection Pool Settings
+connection_pools:
+  default_timeout: 30
+  retry_attempts: 3
+  retry_delay: 1  # seconds
+  health_check_interval: 60  # seconds

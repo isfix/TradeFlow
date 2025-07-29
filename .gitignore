@@ -1,0 +1,397 @@
+# Trading Platform .gitignore
+# Comprehensive exclusion list for security and cleanliness
+
+# =============================================================================
+# SECRETS AND ENVIRONMENT FILES - CRITICAL SECURITY
+# =============================================================================
+.env
+.env.local
+.env.development
+.env.staging
+.env.production
+.env.test
+*.env
+secrets/
+credentials/
+keys/
+certs/
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# =============================================================================
+# PYTHON
+# =============================================================================
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
+.pytest_cache/
+
+# Translations
+*.mo
+*.pot
+
+# Django stuff:
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+
+# Flask stuff:
+instance/
+.webassets-cache
+
+# Scrapy stuff:
+.scrapy
+
+# Sphinx documentation
+docs/_build/
+
+# PyBuilder
+target/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IPython
+profile_default/
+ipython_config.py
+
+# pyenv
+.python-version
+
+# pipenv
+Pipfile.lock
+
+# PEP 582
+__pypackages__/
+
+# Celery stuff
+celerybeat-schedule
+celerybeat.pid
+
+# SageMath parsed files
+*.sage.py
+
+# Environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Spyder project settings
+.spyderproject
+.spyproject
+
+# Rope project settings
+.ropeproject
+
+# mkdocs documentation
+/site
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# =============================================================================
+# DATABASES AND DATA FILES
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+backups/
+dumps/
+*.sql
+*.bak
+
+# =============================================================================
+# LOGS AND MONITORING
+# =============================================================================
+logs/
+*.log
+*.log.*
+log/
+*.out
+*.err
+crash.log
+error.log
+access.log
+debug.log
+audit.log
+
+# =============================================================================
+# DOCKER AND CONTAINERS
+# =============================================================================
+.dockerignore
+docker-compose.override.yml
+docker-compose.local.yml
+.docker/
+
+# =============================================================================
+# KUBERNETES
+# =============================================================================
+*.kubeconfig
+kube-config
+k8s-secrets/
+helm-values.local.yaml
+
+# =============================================================================
+# CLOUD PROVIDER CONFIGS
+# =============================================================================
+# AWS
+.aws/
+aws-credentials
+*.pem
+
+# Google Cloud
+gcloud/
+service-account*.json
+*.json
+
+# Azure
+.azure/
+
+# =============================================================================
+# IDE AND EDITOR FILES
+# =============================================================================
+# VSCode
+.vscode/
+*.code-workspace
+
+# PyCharm
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+*~
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# =============================================================================
+# OPERATING SYSTEM FILES
+# =============================================================================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.tmp
+*.temp
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Linux
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# =============================================================================
+# TRADING PLATFORM SPECIFIC
+# =============================================================================
+# Model files and artifacts
+models/
+*.pkl
+*.joblib
+*.h5
+*.onnx
+*.pb
+mlruns/
+artifacts/
+
+# Trading data
+market_data/
+historical_data/
+tick_data/
+news_data/
+fundamental_data/
+portfolio_data/
+trade_history/
+backtest_results/
+
+# Cache files
+cache/
+.cache/
+*.cache
+redis_dump.rdb
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Configuration overrides
+config.local.yaml
+config.override.yaml
+local_config/
+
+# Performance profiling
+*.prof
+*.profile
+profiling_results/
+
+# Jupyter notebook outputs
+*.ipynb
+
+# Research and development
+research/
+experiments/
+notebooks/checkpoints/
+
+# Third-party integrations
+broker_configs/
+api_configs/
+
+# =============================================================================
+# SECURITY SCANNING AND TOOLS
+# =============================================================================
+# Security scan results
+security_scan_results/
+vulnerability_reports/
+*.sarif
+
+# Dependency check results
+dependency-check-report.html
+dependency-check-report.xml
+
+# =============================================================================
+# BUILD AND DEPLOYMENT
+# =============================================================================
+# Build artifacts
+build/
+dist/
+*.tar.gz
+*.zip
+*.whl
+
+# Deployment configs
+deployment/
+k8s/
+terraform/
+ansible/
+
+# CI/CD artifacts
+.github/workflows/secrets/
+.gitlab-ci-local/
+
+# =============================================================================
+# MONITORING AND METRICS
+# =============================================================================
+# Prometheus data
+prometheus_data/
+grafana_data/
+
+# Metrics and monitoring
+metrics/
+monitoring/
+alerts/
+
+# =============================================================================
+# BACKUP FILES
+# =============================================================================
+*.bak
+*.backup
+*.old
+*.orig
+*~

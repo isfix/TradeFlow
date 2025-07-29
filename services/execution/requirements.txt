@@ -1,0 +1,120 @@
+# Execution Services Requirements - Pinned Versions
+# Services: risk_management_service, order_gateway_service
+# Generated on 2024-01-15
+
+# Base dependencies
+numpy==1.24.3
+pandas==2.0.3
+python-dotenv==1.0.0
+pyyaml==6.0.1
+structlog==23.1.0
+prometheus-client==0.17.1
+asyncio-mqtt==0.13.0
+aiofiles==23.1.0
+click==8.1.6
+tqdm==4.65.0
+python-dateutil==2.8.2
+pytz==2023.3
+psutil==5.9.5
+
+# Database clients
+psycopg2-binary==2.9.7
+influxdb-client==1.36.1
+pymongo==4.4.1
+redis==4.6.0
+
+# Event streaming
+kafka-python==2.0.2
+confluent-kafka==2.1.1
+
+# HTTP clients
+requests==2.31.0
+httpx==0.24.1
+
+# Data validation
+marshmallow==3.20.1
+cerberus==1.3.4
+
+# Async processing
+asyncpg==0.28.0
+
+# Broker integrations
+alpaca-trade-api==3.0.2
+ib-insync==0.9.86
+
+# Order management
+fix-protocol==1.0.0
+
+# Risk calculations
+scipy==1.10.1
+
+# Circuit breakers and rate limiting
+ratelimit==2.2.1
+circuit-breaker==1.4.0
+
+# Decimal precision for financial calculations
+decimal==1.70
+
+# UUID generation
+uuid==1.30
+
+# Threading and locks
+threading-utils==0.3
+
+# Time-based operations
+croniter==1.4.1
+
+# Error handling and retries
+tenacity==8.2.2
+backoff==2.2.1
+
+# Monitoring and alerting
+sentry-sdk==1.28.1
+
+# Performance monitoring
+py-spy==0.3.14
+
+# Memory profiling
+memory-profiler==0.60.0
+
+# Network monitoring
+ping3==4.0.4
+
+# System monitoring
+py-cpuinfo==9.0.0
+
+# Logging enhancements
+colorlog==6.7.0
+
+# Configuration validation
+schema==0.7.5
+
+# State machines (for order states)
+transitions==0.9.0
+
+# Caching
+cachetools==5.3.1
+
+# Collections utilities
+more-itertools==10.1.0
+
+# Financial calculations
+quantlib==1.31
+
+# Market hours and calendars
+pandas-market-calendars==4.3.1
+
+# Timezone handling
+pytz==2023.3
+
+# Data serialization
+msgpack==1.0.5
+
+# Compression
+zstandard==0.21.0
+
+# Health checks
+healthcheck==1.3.3
+
+# Process management
+supervisor==4.2.5

@@ -1,0 +1,393 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database for trade ledger
+  postgres:
+    image: postgres:15-alpine
+    container_name: trading_postgres
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-trading_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-trading_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    networks:
+      - trading_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-trading_user} -d ${POSTGRES_DB:-trading_platform}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # InfluxDB for time-series data
+  influxdb:
+    image: influxdb:2.7-alpine
+    container_name: trading_influxdb
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUXDB_ADMIN_USER:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUXDB_ADMIN_PASSWORD:?INFLUXDB_ADMIN_PASSWORD is required}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUXDB_ORG:-trading_org}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUXDB_BUCKET:-market_data}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUXDB_TOKEN:?INFLUXDB_TOKEN is required}
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+    ports:
+      - "${INFLUXDB_PORT:-8086}:8086"
+    networks:
+      - trading_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8086/ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # MongoDB for document storage
+  mongodb:
+    image: mongo:7.0
+    container_name: trading_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGODB_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGODB_PASSWORD:?MONGODB_PASSWORD is required}
+      MONGO_INITDB_DATABASE: ${MONGODB_DB:-trading_platform}
+    volumes:
+      - mongodb_data:/data/db
+    ports:
+      - "${MONGODB_PORT:-27017}:27017"
+    networks:
+      - trading_network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Redis for caching and session storage
+  redis:
+    image: redis:7-alpine
+    container_name: trading_redis
+    command: redis-server --appendonly yes ${REDIS_PASSWORD:+--requirepass $REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    networks:
+      - trading_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # Apache Kafka for event streaming
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.4.0
+    container_name: trading_zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper_data:/var/lib/zookeeper/data
+    networks:
+      - trading_network
+
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    container_name: trading_kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    ports:
+      - "29092:29092"
+    networks:
+      - trading_network
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "localhost:9092"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # =============================================================================
+  # MICROSERVICES - Each service runs independently
+  # =============================================================================
+
+  # Market Data Service
+  market-data-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.microservice
+      args:
+        SERVICE_NAME: market_data_service
+        SERVICE_PATH: services/data_ingestion
+    container_name: market_data_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: market_data_service
+      POSTGRES_HOST: postgres
+      INFLUXDB_HOST: influxdb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - trading_network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8001/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # News Service
+  news-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.microservice
+      args:
+        SERVICE_NAME: news_service
+        SERVICE_PATH: services/data_ingestion
+    container_name: news_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: news_service
+      POSTGRES_HOST: postgres
+      MONGODB_HOST: mongodb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - trading_network
+    restart: unless-stopped
+
+  # Feature Engineering Service
+  feature-engineering-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.microservice
+      args:
+        SERVICE_NAME: feature_engineering_service
+        SERVICE_PATH: services/processing
+    container_name: feature_engineering_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      influxdb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: feature_engineering_service
+      POSTGRES_HOST: postgres
+      INFLUXDB_HOST: influxdb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - trading_network
+    restart: unless-stopped
+
+  # Sentiment Analysis Service
+  sentiment-analysis-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.microservice
+      args:
+        SERVICE_NAME: sentiment_analysis_service
+        SERVICE_PATH: services/processing
+    container_name: sentiment_analysis_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: sentiment_analysis_service
+      POSTGRES_HOST: postgres
+      MONGODB_HOST: mongodb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - trading_network
+    restart: unless-stopped
+
+  # Signal Aggregation Service
+  signal-aggregation-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.microservice
+      args:
+        SERVICE_NAME: signal_aggregation_service
+        SERVICE_PATH: services/strategy
+    container_name: signal_aggregation_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: signal_aggregation_service
+      POSTGRES_HOST: postgres
+      MONGODB_HOST: mongodb
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - trading_network
+    restart: unless-stopped
+
+  # Risk Management Service
+  risk-management-service:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.microservice
+      args:
+        SERVICE_NAME: risk_management_service
+        SERVICE_PATH: services/execution
+    container_name: risk_management_service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    env_file:
+      - ../.env
+    environment:
+      SERVICE_NAME: risk_management_service
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    volumes:
+      - ../logs:/app/logs
+    networks:
+      - trading_network
+    restart: unless-stopped
+
+  # Development Environment with Jupyter
+  jupyter:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: development
+    container_name: trading_jupyter
+    depends_on:
+      - trading_app
+    environment:
+      JUPYTER_ENABLE_LAB: "yes"
+    volumes:
+      - ../notebooks:/app/notebooks
+      - ../trading_platform:/app/trading_platform
+      - ../configs:/app/configs:ro
+    ports:
+      - "8888:8888"
+    networks:
+      - trading_network
+    command: ["jupyter", "lab", "--allow-root", "--no-browser", "--ip=0.0.0.0", "--port=8888"]
+
+  # Monitoring with Grafana
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: trading_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_INSTALL_PLUGINS: grafana-influxdb-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources
+    ports:
+      - "3000:3000"
+    networks:
+      - trading_network
+    depends_on:
+      - influxdb
+
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: trading_prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - trading_network
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+
+volumes:
+  postgres_data:
+  influxdb_data:
+  mongodb_data:
+  redis_data:
+  zookeeper_data:
+  kafka_data:
+  grafana_data:
+  prometheus_data:
+
+networks:
+  trading_network:
+    driver: bridge

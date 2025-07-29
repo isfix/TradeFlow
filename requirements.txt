@@ -1,0 +1,34 @@
+# Base Core Dependencies - Pinned Versions for Reproducible Builds
+# Generated on 2024-01-15 - Update with care
+
+# Core Python libraries
+numpy==1.24.3
+pandas==2.0.3
+scipy==1.10.1
+
+# Configuration and environment
+python-dotenv==1.0.0
+pyyaml==6.0.1
+toml==0.10.2
+
+# Date and time handling
+python-dateutil==2.8.2
+pytz==2023.3
+
+# Logging and monitoring
+structlog==23.1.0
+prometheus-client==0.17.1
+
+# Async and concurrency
+asyncio-mqtt==0.13.0
+aiofiles==23.1.0
+
+# Utilities
+click==8.1.6
+tqdm==4.65.0
+
+# Security
+cryptography==41.0.3
+
+# Performance monitoring
+psutil==5.9.5
